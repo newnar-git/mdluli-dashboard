@@ -36,8 +36,7 @@ def to_num(val):
 try:
     df = get_master_data()
     
-    # --- EXACT MATRIX MAPPING (Based on your diagnostic screenshot) ---
-    # Column 14 appears to be your "ANNUAL TARGET" / YTD Actual column
+    # --- EXACT MATRIX MAPPING ---
     ANNUAL_COL = 14
     
     # Room Nights (Target is Row 3, Actual is Row 4)
@@ -48,24 +47,34 @@ try:
     rev_target = to_num(df.iloc[6, ANNUAL_COL])
     rev_actual = to_num(df.iloc[7, ANNUAL_COL])
 
-    # If the annual actual hasn't populated in col 14 yet, let's grab the March numbers (Col 1) just so you can see it working!
-    if rev_actual == 0:
-        rev_actual = to_num(df.iloc[7, 1]) # Grabbing March 'Booked total'
-        
-    # We will use 120% of the target to create a "Gold" visual boundary
-    rev_gold = rev_target * 1.2 if rev_target > 0 else 10000000
-    room_gold = room_target * 1.2 if room_target > 0 else 4000
+    # Let's ensure a visual target exists even if the sheet is blank for now
+    visual_rev_target = rev_target if rev_target > 0 else 10000000
+    rev_gold = visual_rev_target * 1.2 
+    
+    visual_room_target = room_target if room_target > 0 else 4000
+    room_gold = visual_room_target * 1.2 
 
     # --- KPI SUMMARY CARDS ---
     st.markdown("---")
     k1, k2, k3 = st.columns(3)
     
     with k1:
-        st.metric("YTD REVENUE (BOOKED)", f"R{rev_actual:,.0f}", f"Target: R{rev_target:,.0f}")
+        # Added native tooltips directly to the metric cards
+        st.metric(
+            "YTD REVENUE (BOOKED)", 
+            f"R{rev_actual:,.0f}", 
+            f"Target: R{rev_target:,.0f}" if rev_target > 0 else "No Target in Sheet",
+            help=f"Actual: R{rev_actual:,.0f} | Target: R{rev_target:,.0f}"
+        )
     with k2:
-        st.metric("ROOM NIGHTS SOLD", f"{room_actual:,.0f}", f"Target: {room_target:,.0f}")
+        st.metric(
+            "ROOM NIGHTS SOLD", 
+            f"{room_actual:,.0f}", 
+            f"Target: {room_target:,.0f}",
+            help=f"Actual: {room_actual:,.0f} | Target: {room_target:,.0f}"
+        )
     with k3:
-        pace = (rev_actual / rev_target) * 100 if rev_target > 0 else 0
+        pace = (rev_actual / visual_rev_target) * 100 
         st.metric("PACE TO TARGET", f"{pace:.1f}%")
 
     st.markdown("---")
@@ -74,7 +83,8 @@ try:
     g1, g2 = st.columns(2)
     
     with g1:
-        st.subheader("Revenue Milestone Tracker")
+        # Added the tooltip (?) to the subheader so execs can hover for details
+        st.subheader("Revenue Milestone Tracker", help=f"Current: R{rev_actual:,.0f} \nTarget: R{rev_target:,.0f}")
         fig_rev = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = rev_actual,
@@ -83,17 +93,16 @@ try:
                 'axis': {'range': [None, rev_gold], 'tickformat': '.2s'},
                 'bar': {'color': "#C5A059"},
                 'steps': [
-                    {'range': [0, rev_target], 'color': "#D6D1C4", 'name': 'Target'}
+                    {'range': [0, visual_rev_target], 'color': "#D6D1C4"}
                 ],
-                'threshold': {'line': {'color': "black", 'width': 4}, 'value': rev_target}
+                'threshold': {'line': {'color': "black", 'width': 4}, 'value': visual_rev_target}
             }
         ))
-        fig_rev.update_traces(hoverinfo="text", text=f"<b>Current:</b> R{rev_actual:,.0f}<br><b>Target:</b> R{rev_target:,.0f}")
-        fig_rev.update_layout(height=400, margin=dict(t=50, b=20, l=30, r=30), hovermode="closest")
+        fig_rev.update_layout(height=400, margin=dict(t=50, b=20, l=30, r=30))
         st.plotly_chart(fig_rev, use_container_width=True)
 
     with g2:
-        st.subheader("Room Nights Performance")
+        st.subheader("Room Nights Performance", help=f"Actual: {room_actual:,.0f} \nTarget: {room_target:,.0f}")
         fig_room = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = room_actual,
@@ -102,12 +111,11 @@ try:
                 'axis': {'range': [None, room_gold]},
                 'bar': {'color': "#4A5D4E"},
                 'steps': [
-                    {'range': [0, room_target], 'color': "#D6D1C4"}
+                    {'range': [0, visual_room_target], 'color': "#D6D1C4"}
                 ],
-                'threshold': {'line': {'color': "black", 'width': 4}, 'value': room_target}
+                'threshold': {'line': {'color': "black", 'width': 4}, 'value': visual_room_target}
             }
         ))
-        fig_room.update_traces(hoverinfo="text", text=f"<b>Actual:</b> {room_actual}<br><b>Target:</b> {room_target}")
         fig_room.update_layout(height=400, margin=dict(t=50, b=20, l=30, r=30))
         st.plotly_chart(fig_room, use_container_width=True)
 
