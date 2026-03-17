@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Mdluli CFO Command", layout="wide")
+st.set_page_config(page_title="Mdluli Commercial Insight", layout="wide")
 
 st.markdown("""
     <style>
@@ -13,26 +14,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown("<h1>🐆 Mdluli Safari Lodge | CFO Command Center</h1>", unsafe_allow_html=True)
+st.markdown("<h1>🐆 Mdluli Safari Lodge | Commercial Insights</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #666; font-size: 18px;'>FY 26/27 Channel & Business Mix Analysis</p>", unsafe_allow_html=True)
 
-# --- DATA CONNECTION (TRIPLE SYNC) ---
+# --- DATA CONNECTION ---
 MASTER_ID = "1xtchBzmRdvP0Uir8gIIQ7MO3Tj9EgV5uc_oqdsm3FwQ"
-YEAR_MAP = {
-    "FY 26/27 (Current)": "1602025819",
-    "FY 25/26 (Previous)": "2009161338",
-    "FY 24/25 (Historical)": "0"
-}
+GID_CURRENT = "1602025819" # FY 26/27 Tab
 
 @st.cache_data(ttl=30)
-def load_all_sheets():
-    sheets = {}
-    for year, gid in YEAR_MAP.items():
-        url = f"https://docs.google.com/spreadsheets/d/{MASTER_ID}/export?format=csv&gid={gid}"
-        try:
-            sheets[year] = pd.read_csv(url, header=None)
-        except:
-            sheets[year] = None
-    return sheets
+def load_sheet():
+    url = f"https://docs.google.com/spreadsheets/d/{MASTER_ID}/export?format=csv&gid={GID_CURRENT}"
+    return pd.read_csv(url, header=None) 
 
 def to_num(val):
     try:
@@ -43,188 +35,96 @@ def to_num(val):
         return 0.0
 
 try:
-    data = load_all_sheets()
+    df = load_sheet()
     months = ["March", "April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February"]
     
-    # --- EXECUTIVE UI: GLOBAL FILTERS ---
-    st.markdown("### ⚙️ Global Financial Filters")
-    f1, f2 = st.columns(2)
-    with f1:
-        selected_year = st.selectbox("1. Select Financial Year:", list(YEAR_MAP.keys()))
-    with f2:
-        selected_period = st.selectbox("2. Select Reporting Period:", ["March (Month 1)", "Year-to-Date (YTD)"] + months)
-
-    calc_period = "March" if "March (Month 1)" in selected_period else selected_period
-
-    # --- DYNAMIC YEAR ROUTING ---
-    df_curr = data[selected_year]
+    # --- EXECUTIVE UI: FILTER ---
+    st.markdown("### 📅 Select Reporting Period")
+    selected_period = st.selectbox("Analyze Performance For:", ["Year-to-Date (YTD)"] + months)
     
-    if "26/27" in selected_year:
-        prev_year_label = "FY 25/26"
-        df_prev = data["FY 25/26 (Previous)"]
-    elif "25/26" in selected_year:
-        prev_year_label = "FY 24/25"
-        df_prev = data["FY 24/25 (Historical)"]
+    # --- EXACT MATRIX MAPPING ---
+    # STAY ROWS: 0=Domestic Web, 1=Enquiry, 2=Intl Web, 3=OTA, 4=Total Rooms
+    # BOOKED ROWS: 6=Domestic, 7=Enquiry, 8=Intl, 9=OTA, 10=Total Booked
+    # ADR: Row 5
+
+    def extract_data(row_idx, period):
+        if period == "Year-to-Date (YTD)":
+            return sum([to_num(df.iloc[row_idx, i]) for i in range(1, 13)])
+        else:
+            col_idx = months.index(period) + 1
+            return to_num(df.iloc[row_idx, col_idx])
+
+    # Extract Totals
+    total_stay = extract_data(4, selected_period)
+    total_booked = extract_data(10, selected_period)
+    
+    # For ADR, we don't sum YTD directly, we average it or calculate from totals
+    if selected_period == "Year-to-Date (YTD)":
+        adr = total_booked / total_stay if total_stay > 0 else 0
     else:
-        prev_year_label = "No Prior Data"
-        df_prev = None 
+        adr = extract_data(5, selected_period)
 
-    # --- DATA EXTRACTION LOGIC ---
-    if calc_period == "Year-to-Date (YTD)":
-        curr_room_tgt = sum([to_num(df_curr.iloc[3, i]) for i in range(1, 13)]) if df_curr is not None else 0
-        curr_room_act = sum([to_num(df_curr.iloc[4, i]) for i in range(1, 13)]) if df_curr is not None else 0
-        curr_rev_tgt = sum([to_num(df_curr.iloc[6, i]) for i in range(1, 13)]) if df_curr is not None else 0
-        curr_rev_act = sum([to_num(df_curr.iloc[7, i]) for i in range(1, 13)]) if df_curr is not None else 0
-        
-        prev_room_act = sum([to_num(df_prev.iloc[4, i]) for i in range(1, 13)]) if df_prev is not None else 0
-        prev_rev_act = sum([to_num(df_prev.iloc[7, i]) for i in range(1, 13)]) if df_prev is not None else 0
-        period_label = "YTD"
-    else:
-        col_idx = months.index(calc_period) + 1
-        curr_room_tgt = to_num(df_curr.iloc[3, col_idx]) if df_curr is not None else 0
-        curr_room_act = to_num(df_curr.iloc[4, col_idx]) if df_curr is not None else 0
-        curr_rev_tgt = to_num(df_curr.iloc[6, col_idx]) if df_curr is not None else 0
-        curr_rev_act = to_num(df_curr.iloc[7, col_idx]) if df_curr is not None else 0
-        
-        prev_room_act = to_num(df_prev.iloc[4, col_idx]) if df_prev is not None else 0
-        prev_rev_act = to_num(df_prev.iloc[7, col_idx]) if df_prev is not None else 0
-        period_label = calc_period
+    # Extract STAY Channels
+    stay_dom = extract_data(0, selected_period)
+    stay_enq = extract_data(1, selected_period)
+    stay_intl = extract_data(2, selected_period)
+    stay_ota = extract_data(3, selected_period)
 
-    # --- MILSTONE TARGETS ---
-    base_rev = curr_rev_tgt if curr_rev_tgt > 0 else 100000 
-    silver_rev = base_rev * 1.10
-    gold_rev = base_rev * 1.20
-
-    base_room = curr_room_tgt if curr_room_tgt > 0 else 100
-    silver_room = base_room * 1.10
-    gold_room = base_room * 1.20
-
-    # YoY Calculations
-    yoy_rev_variance = curr_rev_act - prev_rev_act
-    yoy_rev_growth = ((curr_rev_act / prev_rev_act) - 1) * 100 if prev_rev_act > 0 else 0
-    yoy_room_growth = ((curr_room_act / prev_room_act) - 1) * 100 if prev_room_act > 0 else 0
+    # Extract BOOKED Channels
+    booked_dom = extract_data(6, selected_period)
+    booked_enq = extract_data(7, selected_period)
+    booked_intl = extract_data(8, selected_period)
+    booked_ota = extract_data(9, selected_period)
 
     # --- TOP LINE: KPI METRICS ---
     st.markdown("---")
     k1, k2, k3 = st.columns(3)
     
     with k1:
-        st.metric(
-            f"{period_label} REVENUE", 
-            f"R{curr_rev_act:,.0f}", 
-            delta=f"{yoy_rev_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None and prev_rev_act > 0 else "N/A",
-            help=f"Target: R{base_rev:,.0f} | Last Year: R{prev_rev_act:,.0f}"
-        )
+        st.metric(f"{selected_period} TOTAL REVENUE", f"R{total_booked:,.0f}")
     with k2:
-        st.metric(
-            f"{period_label} ROOM NIGHTS", 
-            f"{curr_room_act:,.0f}", 
-            delta=f"{yoy_room_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None and prev_room_act > 0 else "N/A",
-            help=f"Target: {base_room:,.0f} | Last Year: {prev_room_act:,.0f}"
-        )
+        st.metric(f"{selected_period} ROOM NIGHTS", f"{total_stay:,.0f}")
     with k3:
-        curr_adr = curr_rev_act / curr_room_act if curr_room_act > 0 else 0
-        prev_adr = prev_rev_act / prev_room_act if prev_room_act > 0 else 0
-        adr_growth = ((curr_adr / prev_adr) - 1) * 100 if prev_adr > 0 else 0
-        st.metric(
-            f"{period_label} EST. ADR", 
-            f"R{curr_adr:,.0f}", 
-            f"{adr_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None and prev_adr > 0 else "N/A"
-        )
+        st.metric(f"{selected_period} ADR (Avg Daily Rate)", f"R{adr:,.0f}")
 
-    # --- MIDDLE ROW: INTERACTIVE PACING GAUGES ---
-    g1, g2 = st.columns(2)
+    # --- MIDDLE ROW: THE BUSINESS MIX (DONUT CHARTS) ---
+    st.markdown("### 📊 Channel Mix Breakdown")
+    c1, c2 = st.columns(2)
     
-    with g1:
-        # Hover info safely embedded in the title tooltip
-        hover_text_rev = f"Current: R{curr_rev_act:,.0f} \nBase: R{base_rev:,.0f} \nSilver: R{silver_rev:,.0f} \nGold: R{gold_rev:,.0f}"
-        st.subheader(f"🎯 Revenue Pacing ({period_label})", help=hover_text_rev)
-        
-        fig_rev = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = curr_rev_act,
-            number = {'prefix': "R", 'valueformat': ',.0f', 'font': {'size': 35}},
-            gauge = {
-                'axis': {'range': [None, max(gold_rev, curr_rev_act * 1.1)], 'tickformat': '.2s'},
-                'bar': {'color': "#2C2C2C"},
-                'steps': [
-                    {'range': [0, base_rev], 'color': "#E5E1D8"},
-                    {'range': [base_rev, silver_rev], 'color': "#D6D1C4"},
-                    {'range': [silver_rev, gold_rev], 'color': "#C5A059"}
-                ],
-                'threshold': {'line': {'color': "green", 'width': 4}, 'value': base_rev}
-            }
-        ))
-        fig_rev.update_layout(height=350, margin=dict(t=30, b=20, l=30, r=30))
-        st.plotly_chart(fig_rev, use_container_width=True)
+    # Custom colors for the lodge brand
+    colors = ['#4A5D4E', '#C5A059', '#2C2C2C', '#D6D1C4'] 
 
-    with g2:
-        hover_text_room = f"Current: {curr_room_act:,.0f} \nBase: {base_room:,.0f} \nSilver: {silver_room:,.0f} \nGold: {gold_room:,.0f}"
-        st.subheader(f"🎯 Room Nights Pacing ({period_label})", help=hover_text_room)
+    with c1:
+        st.subheader("Revenue by Channel")
+        rev_labels = ['Domestic', 'Enquiries', 'International', 'OTA']
+        rev_values = [booked_dom, booked_enq, booked_intl, booked_ota]
         
-        fig_room = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = curr_room_act,
-            number = {'valueformat': ',.0f', 'font': {'size': 35}},
-            gauge = {
-                'axis': {'range': [None, max(gold_room, curr_room_act * 1.1)]},
-                'bar': {'color': "#2C2C2C"},
-                'steps': [
-                    {'range': [0, base_room], 'color': "#E5E1D8"},
-                    {'range': [base_room, silver_room], 'color': "#D6D1C4"},
-                    {'range': [silver_room, gold_room], 'color': "#C5A059"}
-                ],
-                'threshold': {'line': {'color': "green", 'width': 4}, 'value': base_room}
-            }
-        ))
-        fig_room.update_layout(height=350, margin=dict(t=30, b=20, l=30, r=30))
-        st.plotly_chart(fig_room, use_container_width=True)
+        fig_rev_pie = go.Figure(data=[go.Pie(labels=rev_labels, values=rev_values, hole=.4, marker_colors=colors)])
+        fig_rev_pie.update_traces(textposition='inside', textinfo='percent+label', hoverinfo='label+value+percent')
+        fig_rev_pie.update_layout(height=400, margin=dict(t=30, b=30, l=0, r=0), showlegend=False)
+        st.plotly_chart(fig_rev_pie, use_container_width=True)
 
-    # --- BOTTOM ROW: 3-YEAR MULTI-CHART ---
+    with c2:
+        st.subheader("Room Nights by Channel")
+        stay_labels = ['Domestic Web', 'Enquiries', 'Intl Web', 'OTA']
+        stay_values = [stay_dom, stay_enq, stay_intl, stay_ota]
+        
+        fig_stay_pie = go.Figure(data=[go.Pie(labels=stay_labels, values=stay_values, hole=.4, marker_colors=colors)])
+        fig_stay_pie.update_traces(textposition='inside', textinfo='percent+label', hoverinfo='label+value+percent')
+        fig_stay_pie.update_layout(height=400, margin=dict(t=30, b=30, l=0, r=0), showlegend=False)
+        st.plotly_chart(fig_stay_pie, use_container_width=True)
+
+    # --- BOTTOM ROW: THE DATA TABLE ---
     st.markdown("---")
-    st.markdown("### 📊 Multi-Year Annual Trend Comparison")
-    
-    chart_view = st.radio("Select Metric to Chart:", ["Revenue (ZAR)", "Room Nights"], horizontal=True)
-    
-    fig_yoy = go.Figure()
-
-    def get_12_months(df, row_idx):
-        if df is None: return [0]*12
-        try: return [to_num(df.iloc[row_idx, i]) for i in range(1, 13)]
-        except: return [0]*12
-
-    if chart_view == "Revenue (ZAR)":
-        act_24 = get_12_months(data["FY 24/25 (Historical)"], 7)
-        act_25 = get_12_months(data["FY 25/26 (Previous)"], 7)
-        act_26 = get_12_months(data["FY 26/27 (Current)"], 7)
-        tgt_26 = get_12_months(data["FY 26/27 (Current)"], 6)
-        
-        fig_yoy.add_trace(go.Bar(x=months, y=act_24, name='FY 24/25 Actual', marker_color='#E5E1D8'))
-        fig_yoy.add_trace(go.Bar(x=months, y=act_25, name='FY 25/26 Actual', marker_color='#D6D1C4'))
-        fig_yoy.add_trace(go.Bar(x=months, y=act_26, name='FY 26/27 OTB', marker_color='#C5A059'))
-        fig_yoy.add_trace(go.Scatter(x=months, y=tgt_26, name='FY 26/27 Target', line=dict(color='black', width=3, dash='dot')))
-        y_title, tick_fmt = 'Revenue (ZAR)', 'R,.0s'
-        
-    else:
-        act_24 = get_12_months(data["FY 24/25 (Historical)"], 4)
-        act_25 = get_12_months(data["FY 25/26 (Previous)"], 4)
-        act_26 = get_12_months(data["FY 26/27 (Current)"], 4)
-        tgt_26 = get_12_months(data["FY 26/27 (Current)"], 3)
-        
-        fig_yoy.add_trace(go.Bar(x=months, y=act_24, name='FY 24/25 Actual', marker_color='#E5E1D8'))
-        fig_yoy.add_trace(go.Bar(x=months, y=act_25, name='FY 25/26 Actual', marker_color='#D6D1C4'))
-        fig_yoy.add_trace(go.Bar(x=months, y=act_26, name='FY 26/27 OTB', marker_color='#4A5D4E'))
-        fig_yoy.add_trace(go.Scatter(x=months, y=tgt_26, name='FY 26/27 Target', line=dict(color='black', width=3, dash='dot')))
-        y_title, tick_fmt = 'Room Nights', ',.0f'
-
-    fig_yoy.update_layout(
-        barmode='group',
-        plot_bgcolor='white',
-        yaxis=dict(title=y_title, tickformat=tick_fmt),
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    st.plotly_chart(fig_yoy, use_container_width=True)
+    with st.expander("📂 View Detailed Channel Data"):
+        st.write("Live feed from FY 26/27 Spreadsheet")
+        channel_df = pd.DataFrame({
+            "Channel": ["Domestic", "Enquiries", "International", "OTA"],
+            "Revenue (ZAR)": [f"R{booked_dom:,.0f}", f"R{booked_enq:,.0f}", f"R{booked_intl:,.0f}", f"R{booked_ota:,.0f}"],
+            "Room Nights": [f"{stay_dom:,.0f}", f"{stay_enq:,.0f}", f"{stay_intl:,.0f}", f"{stay_ota:,.0f}"]
+        })
+        st.dataframe(channel_df, use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error(f"Engine Error: {e}")
+    st.error(f"Mapping Error: {e}")
+    st.info("Ensure the rows in your Google Sheet match the expected matrix layout.")
