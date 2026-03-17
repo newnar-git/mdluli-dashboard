@@ -5,67 +5,80 @@ import plotly.graph_objects as go
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Mdluli Executive Dashboard", layout="wide")
 
-# --- STYLE ---
+# --- BRANDING & STYLE ---
 st.markdown("""
     <style>
-    .main { background-color: #F2EFE9; }
-    h1 { color: #C5A059; font-family: 'serif'; }
+    .main { background-color: #F8F6F2; }
+    h1 { color: #C5A059; font-family: 'serif'; text-align: center; }
+    .stMetric { background-color: white; padding: 15px; border-radius: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🦁 Mdluli Safari Lodge Performance")
+st.title("🦁 Mdluli Safari Lodge Executive Pulse")
 
-# --- DATA LOADING ---
-# We will connect your actual Google Sheet in the next step.
-# For now, this is your "live" data structure.
-data = {
-    "Metric": ["Total Revenue", "Room Nights"],
-    "Actual": [15585704, 2203],
-    "Base": [16718370, 3174],
-    "Silver": [17554246, 3426],
-    "Gold": [18431959, 3597]
-}
-df = pd.DataFrame(data)
+# --- DATA CONNECTION ---
+# This is the link to your "Shadow Sheet"
+sheet_id = "1xtchBzmRdvP0Uir8gIIQ7MO3Tj9EgV5uc_oqdsm3FwQ"
+sheet_name = "DASHBOARD_FEED"
+url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
 
-# --- VISUALS ---
-col1, col2 = st.columns(2)
+@st.cache_data(ttl=600) # Refresh every 10 mins
+def load_data():
+    return pd.read_csv(url)
 
-with col1:
-    st.subheader("Total Revenue YTD")
-    fig_rev = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = df.loc[0, 'Actual'],
-        number = {'prefix': "R", 'font': {'color': '#2C2C2C'}},
-        gauge = {
-            'axis': {'range': [None, df.loc[0, 'Gold' ]]},
-            'bar': {'color': "#C5A059"},
-            'steps': [
-                {'range': [0, df.loc[0, 'Base']], 'color': "#D6D1C4"},
-                {'range': [df.loc[0, 'Base'], df.loc[0, 'Silver']], 'color': "#E5E1D8"}
-            ],
-            'threshold': {
-                'line': {'color': "black", 'width': 4},
-                'thickness': 0.75,
-                'value': df.loc[0, 'Gold']}
-        }
-    ))
-    st.plotly_chart(fig_rev, use_container_width=True)
+try:
+    df = load_data()
+    
+    # Extracting the values from your DASHBOARD_FEED rows
+    rev_actual = df.iloc[0]['Actual']
+    rev_base = df.iloc[0]['Base Target']
+    rev_silver = df.iloc[0]['Silver Target']
+    rev_gold = df.iloc[0]['Gold Target']
+    
+    room_actual = df.iloc[1]['Actual']
+    room_base = df.iloc[1]['Base Target']
+    room_gold = df.iloc[1]['Gold Target']
 
-with col2:
-    st.subheader("Room Nights Sold")
-    fig_room = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = df.loc[1, 'Actual'],
-        number = {'font': {'color': '#2C2C2C'}},
-        gauge = {
-            'axis': {'range': [None, df.loc[1, 'Gold']]},
-            'bar': {'color': "#4A5D4E"},
-            'steps': [
-                {'range': [0, df.loc[1, 'Base']], 'color': "#D6D1C4"},
-                {'range': [df.loc[1, 'Base'], df.loc[1, 'Silver']], 'color': "#E5E1D8"}
-            ]
-        }
-    ))
-    st.plotly_chart(fig_room, use_container_width=True)
+    # --- VISUALS ---
+    col1, col2 = st.columns(2)
 
-st.info("💡 Next Step: We will link this app to your live Google Sheet so these numbers update automatically.")
+    with col1:
+        st.subheader("Total Revenue Performance")
+        fig_rev = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = rev_actual,
+            number = {'prefix': "R", 'font': {'size': 40}},
+            gauge = {
+                'axis': {'range': [None, rev_gold]},
+                'bar': {'color': "#C5A059"},
+                'steps': [
+                    {'range': [0, rev_base], 'color': "#D6D1C4"},
+                    {'range': [rev_base, rev_silver], 'color': "#E5E1D8"}
+                ],
+                'threshold': {
+                    'line': {'color': "black", 'width': 3},
+                    'thickness': 0.75,
+                    'value': rev_gold}
+            }
+        ))
+        st.plotly_chart(fig_rev, use_container_width=True)
+
+    with col2:
+        st.subheader("Room Nights Performance")
+        fig_room = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = room_actual,
+            gauge = {
+                'axis': {'range': [None, room_gold]},
+                'bar': {'color': "#4A5D4E"},
+                'steps': [
+                    {'range': [0, room_base], 'color': "#D6D1C4"}
+                ]
+            }
+        ))
+        st.plotly_chart(fig_room, use_container_width=True)
+
+    st.success(f"✅ Live Data Synced from Google Sheets")
+
+except Exception as e:
+    st.error("Connection Pending: We need to make the Google Sheet 'Shareable' in the next step.")
