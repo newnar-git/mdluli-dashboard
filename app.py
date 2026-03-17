@@ -3,27 +3,28 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Mdluli Interactive Command", layout="wide")
+st.set_page_config(page_title="Mdluli Master Command", layout="wide")
 
-# --- BRANDING ---
+# --- BRANDING & STYLE ---
 st.markdown("""
     <style>
     .main { background-color: #F8F6F2; }
-    h1 { color: #C5A059; font-family: 'serif'; text-align: center; font-size: 45px; margin-bottom: 0; }
-    .stMetric { background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-top: 5px solid #C5A059; }
+    h1 { color: #C5A059; font-family: 'serif'; text-align: center; font-size: 48px; margin-bottom: 0; }
+    .stMetric { background-color: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); border-top: 6px solid #C5A059; }
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown("<h1>🐆 Mdluli Safari Lodge | Executive Suite</h1>", unsafe_allow_html=True)
+st.markdown("<h1>🐆 Mdluli Safari Lodge | Master Command</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #666; font-size: 18px;'>Live Executive Intelligence | Financial Year 2025/26</p>", unsafe_allow_html=True)
 
 # --- DATA CONNECTION ---
 MASTER_ID = "1xtchBzmRdvP0Uir8gIIQ7MO3Tj9EgV5uc_oqdsm3FwQ"
+GID = "1602025819" # Your Target v Actual FY25/26 Tab
 
-@st.cache_data(ttl=10) # Fast refresh for testing
-def get_data():
-    url = f"https://docs.google.com/spreadsheets/d/{MASTER_ID}/export?format=csv&gid=1602025819"
-    df = pd.read_csv(url)
-    df.columns = [str(c).strip() for c in df.columns]
+@st.cache_data(ttl=10)
+def get_master_data():
+    url = f"https://docs.google.com/spreadsheets/d/{MASTER_ID}/export?format=csv&gid={GID}"
+    df = pd.read_csv(url, header=None) # Load raw to find coordinates
     return df
 
 def to_num(val):
@@ -35,30 +36,34 @@ def to_num(val):
         return 0.0
 
 try:
-    raw_df = get_data()
+    raw_df = get_master_data()
     
-    # Precision Search for Metrics
-    rev_row = raw_df[raw_df.iloc[:, 0].str.contains("Total Revenue", na=False, case=False)]
-    room_row = raw_df[raw_df.iloc[:, 0].str.contains("Room Nights", na=False, case=False)]
+    # --- INTELLIGENT SEARCH ---
+    # We find the row index where "Total Revenue" exists ANYWHERE in the sheet
+    rev_idx = raw_df[raw_df.apply(lambda row: row.astype(str).str.contains('Total Revenue', case=False).any(), axis=1)].index[0]
+    room_idx = raw_df[raw_df.apply(lambda row: row.astype(str).str.contains('Room Nights', case=False).any(), axis=1)].index[0]
 
-    # Data Mapping (Col B=Actual, Col C=Silver, Col D=Base, Col F=Gold)
-    # Note: I adjusted indices to match your sheet's specific layout
-    actual_rev = to_num(rev_row.iloc[0, 1])
-    base_rev   = to_num(rev_row.iloc[0, 3])
-    silver_rev = to_num(rev_row.iloc[0, 4]) # Assuming Col E is Silver
-    gold_rev   = to_num(rev_row.iloc[0, 5])
+    # Map the numbers: Column B=Actual(1), Column D=Base(3), Column E=Silver(4), Column F=Gold(5)
+    actual_rev = to_num(raw_df.iloc[rev_idx, 1])
+    base_rev   = to_num(raw_df.iloc[rev_idx, 3])
+    silver_rev = to_num(raw_df.iloc[rev_idx, 4])
+    gold_rev   = to_num(raw_df.iloc[rev_idx, 5])
     
-    actual_room = to_num(room_row.iloc[0, 1])
-    base_room   = to_num(room_row.iloc[0, 3])
-    gold_room   = to_num(room_row.iloc[0, 5])
+    actual_room = to_num(raw_df.iloc[room_idx, 1])
+    base_room   = to_num(raw_df.iloc[room_idx, 3])
+    gold_room   = to_num(raw_df.iloc[room_idx, 5])
 
-    # --- KPI SUMMARY ---
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("YTD Revenue", f"R{actual_rev:,.0f}")
-    with c2: st.metric("Room Nights", f"{actual_room:,.0f}")
-    with c3: 
+    # --- KPI SUMMARY CARDS ---
+    st.markdown("---")
+    k1, k2, k3 = st.columns(3)
+    
+    with k1:
+        st.metric("YTD TOTAL REVENUE", f"R{actual_rev:,.0f}", f"Target Gap: R{gold_rev-actual_rev:,.0f}")
+    with k2:
+        st.metric("ROOM NIGHTS SOLD", f"{actual_room:,.0f}", f"Gap to Gold: {gold_room-actual_room:,.0f}")
+    with k3:
         pace = (actual_rev / gold_rev) * 100 if gold_rev > 0 else 0
-        st.metric("Pace to Gold", f"{pace:.1f}%")
+        st.metric("PACE TO GOLD", f"{pace:.1f}%", "Overall Target Completion")
 
     st.markdown("---")
 
@@ -66,28 +71,34 @@ try:
     g1, g2 = st.columns(2)
     
     with g1:
-        st.subheader("Interactive Revenue Tracker")
+        st.subheader("Revenue Milestone Tracker")
         fig_rev = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = actual_rev,
-            number = {'prefix': "R", 'valueformat': ',.0f'},
+            number = {'prefix': "R", 'valueformat': ',.0f', 'font': {'size': 40}},
             gauge = {
-                'axis': {'range': [None, gold_rev], 'tickformat': '.2s'},
+                'axis': {'range': [None, gold_rev * 1.1], 'tickformat': '.2s'},
                 'bar': {'color': "#C5A059"},
                 'steps': [
-                    {'range': [0, base_rev], 'color': "#D6D1C4"},
-                    {'range': [base_rev, silver_rev], 'color': "#E5E1D8"},
-                    {'range': [silver_rev, gold_rev], 'color': "#F2EFE9"}
+                    {'range': [0, base_rev], 'color': "#D6D1C4", 'name': 'Base'},
+                    {'range': [base_rev, silver_rev], 'color': "#E5E1D8", 'name': 'Silver'},
+                    {'range': [silver_rev, gold_rev], 'color': "#F2EFE9", 'name': 'Gold'}
                 ],
                 'threshold': {'line': {'color': "black", 'width': 4}, 'value': gold_rev}
             }
         ))
-        # This is the "Magic" part: Setting up the Hover Text
-        fig_rev.update_traces(
-            hoverinfo="name+value",
-            name=f"Current: R{actual_rev:,.0f}<br>Base: R{base_rev:,.0f}<br>Silver: R{silver_rev:,.0f}<br>GOLD: R{gold_rev:,.0f}"
+        # Hover interactivity
+        fig_rev.update_layout(
+            hovermode="closest",
+            margin=dict(t=50, b=20, l=30, r=30),
+            height=400,
+            annotations=[dict(text=f"<b>HOVER FOR TARGETS</b>", x=0.5, y=-0.1, showarrow=False, font=dict(color="#C5A059"))]
         )
-        fig_rev.update_layout(height=400, margin=dict(t=50, b=20, l=30, r=30))
+        # Custom hover description
+        fig_rev.update_traces(
+            hoverinfo="text",
+            text=f"<b>Current:</b> R{actual_rev:,.0f}<br><b>Base:</b> R{base_rev:,.0f}<br><b>Silver:</b> R{silver_rev:,.0f}<br><b>GOLD:</b> R{gold_rev:,.0f}"
+        )
         st.plotly_chart(fig_rev, use_container_width=True)
 
     with g2:
@@ -95,9 +106,9 @@ try:
         fig_room = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = actual_room,
-            number = {'valueformat': ',.0f'},
+            number = {'valueformat': ',.0f', 'font': {'size': 40}},
             gauge = {
-                'axis': {'range': [None, gold_room]},
+                'axis': {'range': [None, gold_room * 1.1]},
                 'bar': {'color': "#4A5D4E"},
                 'steps': [
                     {'range': [0, base_room], 'color': "#D6D1C4"},
@@ -105,16 +116,20 @@ try:
                 ]
             }
         ))
-        fig_room.update_traces(
-            hoverinfo="name+value",
-            name=f"Actual: {actual_room}<br>Base: {base_room}<br>Gold Goal: {gold_room}"
-        )
         fig_room.update_layout(height=400, margin=dict(t=50, b=20, l=30, r=30))
+        fig_room.update_traces(
+            hoverinfo="text",
+            text=f"<b>Actual:</b> {actual_room}<br><b>Base Goal:</b> {base_room}<br><b>Gold Goal:</b> {gold_room}"
+        )
         st.plotly_chart(fig_room, use_container_width=True)
 
-    # --- EXPANDABLE DATA VIEW ---
-    with st.expander("📂 View Master Source Data"):
+    # --- THE DATA EXPLORER ---
+    with st.expander("📂 Explore Full Master Data Grid"):
+        st.write("Below is the live data as it appears in your spreadsheet.")
         st.dataframe(raw_df.fillna(""), use_container_width=True)
 
+    st.markdown("<center>🐆 <b>Mdluli Intelligence System Active</b> | No Manual Work Required</center>", unsafe_allow_html=True)
+
 except Exception as e:
-    st.error(f"Logic Sync Error: {e}")
+    st.error(f"Mapping Logic Error: {e}")
+    st.info("I couldn't find 'Total Revenue' or 'Room Nights' in your sheet. Please ensure those exact words are in the first or second column of your 'Target v Actual FY25/26' tab.")
