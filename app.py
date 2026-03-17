@@ -14,7 +14,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.markdown("<h1>🐆 Mdluli Safari Lodge | Master Command</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666; font-size: 18px;'>Live Matrix Feed | Executive Intelligence</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #666; font-size: 18px;'>Live Matrix Feed | Auto-Sum Active</p>", unsafe_allow_html=True)
 
 # --- DATA CONNECTION ---
 MASTER_ID = "1xtchBzmRdvP0Uir8gIIQ7MO3Tj9EgV5uc_oqdsm3FwQ"
@@ -36,18 +36,23 @@ def to_num(val):
 try:
     df = get_master_data()
     
-    # --- EXACT MATRIX MAPPING ---
-    ANNUAL_COL = 14
-    
+    # --- AUTO-SUM LOGIC ---
+    # Instead of relying on the Google Sheet's "Annual" column, the app will sum columns 1 to 12 (March to Feb)
+    def get_ytd_sum(row_index):
+        total = 0
+        for col in range(1, 13): 
+            total += to_num(df.iloc[row_index, col])
+        return total
+
     # Room Nights (Target is Row 3, Actual is Row 4)
-    room_target = to_num(df.iloc[3, ANNUAL_COL])
-    room_actual = to_num(df.iloc[4, ANNUAL_COL])
+    room_target = get_ytd_sum(3)
+    room_actual = get_ytd_sum(4)
     
     # Revenue / Booked (Target is Row 6, Actual is Row 7)
-    rev_target = to_num(df.iloc[6, ANNUAL_COL])
-    rev_actual = to_num(df.iloc[7, ANNUAL_COL])
+    rev_target = get_ytd_sum(6)
+    rev_actual = get_ytd_sum(7)
 
-    # Let's ensure a visual target exists even if the sheet is blank for now
+    # Let's ensure a visual target exists for the gauges even if targets are empty
     visual_rev_target = rev_target if rev_target > 0 else 10000000
     rev_gold = visual_rev_target * 1.2 
     
@@ -59,11 +64,10 @@ try:
     k1, k2, k3 = st.columns(3)
     
     with k1:
-        # Added native tooltips directly to the metric cards
         st.metric(
             "YTD REVENUE (BOOKED)", 
             f"R{rev_actual:,.0f}", 
-            f"Target: R{rev_target:,.0f}" if rev_target > 0 else "No Target in Sheet",
+            f"Target: R{rev_target:,.0f}" if rev_target > 0 else "No Target Set",
             help=f"Actual: R{rev_actual:,.0f} | Target: R{rev_target:,.0f}"
         )
     with k2:
@@ -83,7 +87,6 @@ try:
     g1, g2 = st.columns(2)
     
     with g1:
-        # Added the tooltip (?) to the subheader so execs can hover for details
         st.subheader("Revenue Milestone Tracker", help=f"Current: R{rev_actual:,.0f} \nTarget: R{rev_target:,.0f}")
         fig_rev = go.Figure(go.Indicator(
             mode = "gauge+number",
