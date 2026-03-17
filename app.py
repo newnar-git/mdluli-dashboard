@@ -3,9 +3,9 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Mdluli Executive Command", layout="wide")
+st.set_page_config(page_title="Mdluli Interactive Command", layout="wide")
 
-# --- BRANDING & STYLE ---
+# --- BRANDING ---
 st.markdown("""
     <style>
     .main { background-color: #F8F6F2; }
@@ -14,102 +14,107 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown("<h1>🐆 Mdluli Safari Lodge | Executive Command</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666;'>Live Master Data Feed: FY25/26 Performance</p>", unsafe_allow_html=True)
+st.markdown("<h1>🐆 Mdluli Safari Lodge | Executive Suite</h1>", unsafe_allow_html=True)
 
-# --- DATA CONNECTION (Direct to Master) ---
+# --- DATA CONNECTION ---
 MASTER_ID = "1xtchBzmRdvP0Uir8gIIQ7MO3Tj9EgV5uc_oqdsm3FwQ"
 
-@st.cache_data(ttl=60)
-def get_master_tab(gid):
-    url = f"https://docs.google.com/spreadsheets/d/{MASTER_ID}/export?format=csv&gid={gid}"
-    return pd.read_csv(url)
+@st.cache_data(ttl=10) # Fast refresh for testing
+def get_data():
+    url = f"https://docs.google.com/spreadsheets/d/{MASTER_ID}/export?format=csv&gid=1602025819"
+    df = pd.read_csv(url)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
 
 def to_num(val):
     try:
+        if pd.isna(val): return 0.0
         clean = str(val).replace('R', '').replace(',', '').replace('%', '').replace(' ', '').strip()
         return float(clean)
     except:
         return 0.0
 
 try:
-    # Pulling 'Target v Actual FY25/26' (GID 1602025819)
-    df = get_master_tab("1602025819")
+    raw_df = get_data()
     
-    # --- MAPPING DATA ---
-    # Revenue is Row 3 (Index 2), Room Nights Row 5 (Index 4)
-    # Col B (Index 1) is Actual | Col D (Index 3) is Base | Col F (Index 5) is Gold
-    
-    rev_act  = to_num(df.iloc[2, 1])
-    rev_base = to_num(df.iloc[2, 3])
-    rev_gold = to_num(df.iloc[2, 5])
-    
-    room_act  = to_num(df.iloc[4, 1])
-    room_base = to_num(df.iloc[4, 3])
-    room_gold = to_num(df.iloc[4, 5])
+    # Precision Search for Metrics
+    rev_row = raw_df[raw_df.iloc[:, 0].str.contains("Total Revenue", na=False, case=False)]
+    room_row = raw_df[raw_df.iloc[:, 0].str.contains("Room Nights", na=False, case=False)]
 
-    # --- TOP ROW: KPI CARDS ---
-    st.markdown("### 📊 Key Performance Indicators")
-    k1, k2, k3 = st.columns(3)
+    # Data Mapping (Col B=Actual, Col C=Silver, Col D=Base, Col F=Gold)
+    # Note: I adjusted indices to match your sheet's specific layout
+    actual_rev = to_num(rev_row.iloc[0, 1])
+    base_rev   = to_num(rev_row.iloc[0, 3])
+    silver_rev = to_num(rev_row.iloc[0, 4]) # Assuming Col E is Silver
+    gold_rev   = to_num(rev_row.iloc[0, 5])
     
-    with k1:
-        st.metric("YTD Revenue", f"R{rev_act:,.0f}", f"Target: R{rev_base:,.0f}")
-    with k2:
-        st.metric("Room Nights", f"{room_act:,.0f}", f"Target: {room_base:,.0f}")
-    with k3:
-        pace = (rev_act / rev_gold) * 100 if rev_gold > 0 else 0
-        st.metric("Pace to Gold", f"{pace:.1f}%", "Overall Progress")
+    actual_room = to_num(room_row.iloc[0, 1])
+    base_room   = to_num(room_row.iloc[0, 3])
+    gold_room   = to_num(room_row.iloc[0, 5])
+
+    # --- KPI SUMMARY ---
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric("YTD Revenue", f"R{actual_rev:,.0f}")
+    with c2: st.metric("Room Nights", f"{actual_room:,.0f}")
+    with c3: 
+        pace = (actual_rev / gold_rev) * 100 if gold_rev > 0 else 0
+        st.metric("Pace to Gold", f"{pace:.1f}%")
 
     st.markdown("---")
 
-    # --- MIDDLE ROW: THE PULSE ---
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.subheader("Revenue Status vs Gold")
+    # --- INTERACTIVE GAUGES ---
+    g1, g2 = st.columns(2)
+    
+    with g1:
+        st.subheader("Interactive Revenue Tracker")
         fig_rev = go.Figure(go.Indicator(
             mode = "gauge+number",
-            value = rev_act,
-            number = {'prefix': "R", 'valueformat': ',.0f', 'font': {'color': '#2C2C2C'}},
+            value = actual_rev,
+            number = {'prefix': "R", 'valueformat': ',.0f'},
             gauge = {
-                'axis': {'range': [None, rev_gold], 'tickformat': '.2s'},
+                'axis': {'range': [None, gold_rev], 'tickformat': '.2s'},
                 'bar': {'color': "#C5A059"},
                 'steps': [
-                    {'range': [0, rev_base], 'color': "#D6D1C4"},
-                    {'range': [rev_base, rev_gold], 'color': "#E5E1D8"}
+                    {'range': [0, base_rev], 'color': "#D6D1C4"},
+                    {'range': [base_rev, silver_rev], 'color': "#E5E1D8"},
+                    {'range': [silver_rev, gold_rev], 'color': "#F2EFE9"}
                 ],
-                'threshold': {'line': {'color': "black", 'width': 4}, 'value': rev_gold}
+                'threshold': {'line': {'color': "black", 'width': 4}, 'value': gold_rev}
             }
         ))
+        # This is the "Magic" part: Setting up the Hover Text
+        fig_rev.update_traces(
+            hoverinfo="name+value",
+            name=f"Current: R{actual_rev:,.0f}<br>Base: R{base_rev:,.0f}<br>Silver: R{silver_rev:,.0f}<br>GOLD: R{gold_rev:,.0f}"
+        )
+        fig_rev.update_layout(height=400, margin=dict(t=50, b=20, l=30, r=30))
         st.plotly_chart(fig_rev, use_container_width=True)
-        st.caption(f"**Gold Target Milestone:** R{rev_gold:,.0f}")
 
-    with c2:
-        st.subheader("Room Nights Status vs Gold")
+    with g2:
+        st.subheader("Room Nights Performance")
         fig_room = go.Figure(go.Indicator(
             mode = "gauge+number",
-            value = room_act,
-            number = {'valueformat': ',.0f', 'font': {'color': '#2C2C2C'}},
+            value = actual_room,
+            number = {'valueformat': ',.0f'},
             gauge = {
-                'axis': {'range': [None, room_gold]},
+                'axis': {'range': [None, gold_room]},
                 'bar': {'color': "#4A5D4E"},
-                'steps': [{'range': [0, room_base], 'color': "#D6D1C4"}]
+                'steps': [
+                    {'range': [0, base_room], 'color': "#D6D1C4"},
+                    {'range': [base_room, gold_room], 'color': "#E5E1D8"}
+                ]
             }
         ))
+        fig_room.update_traces(
+            hoverinfo="name+value",
+            name=f"Actual: {actual_room}<br>Base: {base_room}<br>Gold Goal: {gold_room}"
+        )
+        fig_room.update_layout(height=400, margin=dict(t=50, b=20, l=30, r=30))
         st.plotly_chart(fig_room, use_container_width=True)
-        st.caption(f"**Gold Target Milestone:** {room_gold:,.0f} Nights")
 
-    st.markdown("---")
-    
-    # --- BOTTOM ROW: THE DATA EXPLORER ---
-    with st.expander("📂 View Master Financial Table"):
-        st.write("This is a live look at your 'Target v Actual FY25/26' spreadsheet tab.")
-        # Cleaning up the display table for the CFO
-        clean_df = df.fillna("")
-        st.dataframe(clean_df, use_container_width=True)
-
-    st.markdown("<center>🐆 <b>Mdluli Intelligence System Active</b> | No Manual Input Required</center>", unsafe_allow_html=True)
+    # --- EXPANDABLE DATA VIEW ---
+    with st.expander("📂 View Master Source Data"):
+        st.dataframe(raw_df.fillna(""), use_container_width=True)
 
 except Exception as e:
-    st.error(f"Sync Error: {e}")
-    st.info("The system is having trouble reading the Master Sheet. Ensure the tab 'Target v Actual FY25/26' is correctly shared.")
+    st.error(f"Logic Sync Error: {e}")
