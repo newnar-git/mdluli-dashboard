@@ -25,7 +25,6 @@ YEAR_MAP = {
 
 @st.cache_data(ttl=30)
 def load_all_sheets():
-    # Downloads all 3 years into memory so filtering is instant
     sheets = {}
     for year, gid in YEAR_MAP.items():
         url = f"https://docs.google.com/spreadsheets/d/{MASTER_ID}/export?format=csv&gid={gid}"
@@ -60,7 +59,6 @@ try:
     # --- DYNAMIC YEAR ROUTING ---
     df_curr = data[selected_year]
     
-    # Determine the comparison year automatically
     if "26/27" in selected_year:
         prev_year_label = "FY 25/26"
         df_prev = data["FY 25/26 (Previous)"]
@@ -69,24 +67,24 @@ try:
         df_prev = data["FY 24/25 (Historical)"]
     else:
         prev_year_label = "No Prior Data"
-        df_prev = None # No 23/24 data provided
+        df_prev = None 
 
     # --- DATA EXTRACTION LOGIC ---
     if calc_period == "Year-to-Date (YTD)":
-        curr_room_tgt = sum([to_num(df_curr.iloc[3, i]) for i in range(1, 13)])
-        curr_room_act = sum([to_num(df_curr.iloc[4, i]) for i in range(1, 13)])
-        curr_rev_tgt = sum([to_num(df_curr.iloc[6, i]) for i in range(1, 13)])
-        curr_rev_act = sum([to_num(df_curr.iloc[7, i]) for i in range(1, 13)])
+        curr_room_tgt = sum([to_num(df_curr.iloc[3, i]) for i in range(1, 13)]) if df_curr is not None else 0
+        curr_room_act = sum([to_num(df_curr.iloc[4, i]) for i in range(1, 13)]) if df_curr is not None else 0
+        curr_rev_tgt = sum([to_num(df_curr.iloc[6, i]) for i in range(1, 13)]) if df_curr is not None else 0
+        curr_rev_act = sum([to_num(df_curr.iloc[7, i]) for i in range(1, 13)]) if df_curr is not None else 0
         
         prev_room_act = sum([to_num(df_prev.iloc[4, i]) for i in range(1, 13)]) if df_prev is not None else 0
         prev_rev_act = sum([to_num(df_prev.iloc[7, i]) for i in range(1, 13)]) if df_prev is not None else 0
         period_label = "YTD"
     else:
         col_idx = months.index(calc_period) + 1
-        curr_room_tgt = to_num(df_curr.iloc[3, col_idx])
-        curr_room_act = to_num(df_curr.iloc[4, col_idx])
-        curr_rev_tgt = to_num(df_curr.iloc[6, col_idx])
-        curr_rev_act = to_num(df_curr.iloc[7, col_idx])
+        curr_room_tgt = to_num(df_curr.iloc[3, col_idx]) if df_curr is not None else 0
+        curr_room_act = to_num(df_curr.iloc[4, col_idx]) if df_curr is not None else 0
+        curr_rev_tgt = to_num(df_curr.iloc[6, col_idx]) if df_curr is not None else 0
+        curr_rev_act = to_num(df_curr.iloc[7, col_idx]) if df_curr is not None else 0
         
         prev_room_act = to_num(df_prev.iloc[4, col_idx]) if df_prev is not None else 0
         prev_rev_act = to_num(df_prev.iloc[7, col_idx]) if df_prev is not None else 0
@@ -114,14 +112,14 @@ try:
         st.metric(
             f"{period_label} REVENUE", 
             f"R{curr_rev_act:,.0f}", 
-            delta=f"{yoy_rev_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None else "No historical data",
+            delta=f"{yoy_rev_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None and prev_rev_act > 0 else "N/A",
             help=f"Target: R{base_rev:,.0f} | Last Year: R{prev_rev_act:,.0f}"
         )
     with k2:
         st.metric(
             f"{period_label} ROOM NIGHTS", 
             f"{curr_room_act:,.0f}", 
-            delta=f"{yoy_room_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None else "No historical data",
+            delta=f"{yoy_room_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None and prev_room_act > 0 else "N/A",
             help=f"Target: {base_room:,.0f} | Last Year: {prev_room_act:,.0f}"
         )
     with k3:
@@ -131,14 +129,17 @@ try:
         st.metric(
             f"{period_label} EST. ADR", 
             f"R{curr_adr:,.0f}", 
-            f"{adr_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None else "No historical data"
+            f"{adr_growth:+.1f}% (vs {prev_year_label})" if df_prev is not None and prev_adr > 0 else "N/A"
         )
 
     # --- MIDDLE ROW: INTERACTIVE PACING GAUGES ---
-    st.markdown(f"### 🎯 {period_label} Budget Pacing")
     g1, g2 = st.columns(2)
     
     with g1:
+        # Hover info safely embedded in the title tooltip
+        hover_text_rev = f"Current: R{curr_rev_act:,.0f} \nBase: R{base_rev:,.0f} \nSilver: R{silver_rev:,.0f} \nGold: R{gold_rev:,.0f}"
+        st.subheader(f"🎯 Revenue Pacing ({period_label})", help=hover_text_rev)
+        
         fig_rev = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = curr_rev_act,
@@ -154,14 +155,13 @@ try:
                 'threshold': {'line': {'color': "green", 'width': 4}, 'value': base_rev}
             }
         ))
-        fig_rev.update_traces(
-            hoverinfo="text",
-            text=f"<b>Current:</b> R{curr_rev_act:,.0f}<br><br><b>Base:</b> R{base_rev:,.0f}<br><b>Silver:</b> R{silver_rev:,.0f}<br><b>Gold:</b> R{gold_rev:,.0f}"
-        )
         fig_rev.update_layout(height=350, margin=dict(t=30, b=20, l=30, r=30))
         st.plotly_chart(fig_rev, use_container_width=True)
 
     with g2:
+        hover_text_room = f"Current: {curr_room_act:,.0f} \nBase: {base_room:,.0f} \nSilver: {silver_room:,.0f} \nGold: {gold_room:,.0f}"
+        st.subheader(f"🎯 Room Nights Pacing ({period_label})", help=hover_text_room)
+        
         fig_room = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = curr_room_act,
@@ -177,10 +177,6 @@ try:
                 'threshold': {'line': {'color': "green", 'width': 4}, 'value': base_room}
             }
         ))
-        fig_room.update_traces(
-            hoverinfo="text",
-            text=f"<b>Current:</b> {curr_room_act:,.0f}<br><br><b>Base:</b> {base_room:,.0f}<br><b>Silver:</b> {silver_room:,.0f}<br><b>Gold:</b> {gold_room:,.0f}"
-        )
         fig_room.update_layout(height=350, margin=dict(t=30, b=20, l=30, r=30))
         st.plotly_chart(fig_room, use_container_width=True)
 
@@ -188,14 +184,14 @@ try:
     st.markdown("---")
     st.markdown("### 📊 Multi-Year Annual Trend Comparison")
     
-    chart_view = st.radio("Select View:", ["Revenue (ZAR)", "Room Nights"], horizontal=True)
+    chart_view = st.radio("Select Metric to Chart:", ["Revenue (ZAR)", "Room Nights"], horizontal=True)
     
     fig_yoy = go.Figure()
 
-    # Helper function to get 12-month array safely
     def get_12_months(df, row_idx):
         if df is None: return [0]*12
-        return [to_num(df.iloc[row_idx, i]) for i in range(1, 13)]
+        try: return [to_num(df.iloc[row_idx, i]) for i in range(1, 13)]
+        except: return [0]*12
 
     if chart_view == "Revenue (ZAR)":
         act_24 = get_12_months(data["FY 24/25 (Historical)"], 7)
