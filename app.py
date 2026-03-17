@@ -43,17 +43,13 @@ try:
     selected_period = st.selectbox("View Performance For:", ["Year-to-Date (YTD)"] + months)
     
     # --- CORE DATA EXTRACTION ---
-    # Rows based on your matrix: 3=Room Target, 4=Room Actual, 6=Rev Target, 7=Rev Actual
-    
     if selected_period == "Year-to-Date (YTD)":
-        # Sum all 12 months for YTD
         room_target = sum([to_num(df.iloc[3, i]) for i in range(1, 13)])
         room_actual = sum([to_num(df.iloc[4, i]) for i in range(1, 13)])
         rev_target = sum([to_num(df.iloc[6, i]) for i in range(1, 13)])
         rev_actual = sum([to_num(df.iloc[7, i]) for i in range(1, 13)])
         period_label = "YTD"
     else:
-        # Get data for the specific selected month
         col_idx = months.index(selected_period) + 1
         room_target = to_num(df.iloc[3, col_idx])
         room_actual = to_num(df.iloc[4, col_idx])
@@ -62,9 +58,7 @@ try:
         period_label = selected_period
 
     # --- MILESTONE LOGIC ---
-    # Since your matrix only has one target line, we mathematically create the executive tiers.
-    # Base = 100% of Sheet Target | Silver = 110% | Gold = 120%
-    base_rev = rev_target if rev_target > 0 else 1000000 # Fallback so gauge doesn't break
+    base_rev = rev_target if rev_target > 0 else 1000000 
     silver_rev = base_rev * 1.10
     gold_rev = base_rev * 1.20
 
@@ -80,25 +74,28 @@ try:
         st.metric(
             f"{period_label} REVENUE", 
             f"R{rev_actual:,.0f}", 
-            f"Variance to Base: R{rev_actual - base_rev:,.0f}",
+            f"Variance to Target: R{rev_actual - base_rev:,.0f}",
             help=f"Actual: R{rev_actual:,.0f} | Base Target: R{base_rev:,.0f}"
         )
     with k2:
         st.metric(
             f"{period_label} ROOM NIGHTS", 
             f"{room_actual:,.0f}", 
-            f"Variance to Base: {room_actual - base_room:,.0f}",
+            f"Variance to Target: {room_actual - base_room:,.0f}",
             help=f"Actual: {room_actual:,.0f} | Base Target: {base_room:,.0f}"
         )
     with k3:
-        pace = (rev_actual / base_rev) * 100 
+        pace = (rev_actual / base_rev) * 100 if base_rev > 0 else 0
         st.metric(f"{period_label} PACE TO TARGET", f"{pace:.1f}%")
 
-    # --- INTERACTIVE GAUGES (WITH HOVER RESTORED) ---
+    # --- INTERACTIVE GAUGES ---
     g1, g2 = st.columns(2)
     
     with g1:
-        st.subheader(f"Revenue Pulse: {period_label}")
+        # Hover info is now safely in the subheader 'help' tooltip
+        hover_text_rev = f"Base: R{base_rev:,.0f} | Silver (110%): R{silver_rev:,.0f} | Gold (120%): R{gold_rev:,.0f}"
+        st.subheader(f"Revenue Pulse: {period_label}", help=hover_text_rev)
+        
         fig_rev = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = rev_actual,
@@ -114,16 +111,13 @@ try:
                 'threshold': {'line': {'color': "black", 'width': 4}, 'value': base_rev}
             }
         ))
-        # Restored Hover Data
-        fig_rev.update_traces(
-            hoverinfo="text", 
-            text=f"<b>Current:</b> R{rev_actual:,.0f}<br><b>Base (Target):</b> R{base_rev:,.0f}<br><b>Silver (110%):</b> R{silver_rev:,.0f}<br><b>Gold (120%):</b> R{gold_rev:,.0f}"
-        )
-        fig_rev.update_layout(height=350, margin=dict(t=30, b=20, l=30, r=30), hovermode="closest")
+        fig_rev.update_layout(height=350, margin=dict(t=30, b=20, l=30, r=30))
         st.plotly_chart(fig_rev, use_container_width=True)
 
     with g2:
-        st.subheader(f"Room Nights Pulse: {period_label}")
+        hover_text_room = f"Base: {base_room:,.0f} | Silver (110%): {silver_room:,.0f} | Gold (120%): {gold_room:,.0f}"
+        st.subheader(f"Room Nights Pulse: {period_label}", help=hover_text_room)
+        
         fig_room = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = room_actual,
@@ -139,19 +133,13 @@ try:
                 'threshold': {'line': {'color': "black", 'width': 4}, 'value': base_room}
             }
         ))
-        # Restored Hover Data
-        fig_room.update_traces(
-            hoverinfo="text", 
-            text=f"<b>Current:</b> {room_actual:,.0f}<br><b>Base (Target):</b> {base_room:,.0f}<br><b>Silver (110%):</b> {silver_room:,.0f}<br><b>Gold (120%):</b> {gold_room:,.0f}"
-        )
-        fig_room.update_layout(height=350, margin=dict(t=30, b=20, l=30, r=30), hovermode="closest")
+        fig_room.update_layout(height=350, margin=dict(t=30, b=20, l=30, r=30))
         st.plotly_chart(fig_room, use_container_width=True)
 
     # --- THE C-SUITE TREND CHART ---
     st.markdown("---")
     st.subheader("📈 Annual Revenue Curve (Seasonality & OTB)")
     
-    # Extract all 12 months of data for the chart
     monthly_targets = [to_num(df.iloc[6, i]) for i in range(1, 13)]
     monthly_actuals = [to_num(df.iloc[7, i]) for i in range(1, 13)]
     
